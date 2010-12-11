@@ -6,6 +6,7 @@ import java.io.PrintWriter;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.Arrays;
+import java.util.logging.Logger;
 
 import javax.servlet.http.HttpServletResponse;
 
@@ -14,9 +15,14 @@ import org.slim3.controller.Navigation;
 import org.slim3.util.StringUtil;
 
 import com.appspot.mobsurv.util.ImageDataUrl;
+import com.google.appengine.api.memcache.Expiration;
+import com.google.appengine.api.memcache.MemcacheService;
+import com.google.appengine.api.memcache.MemcacheServiceFactory;
 
 public class IndexController extends Controller {
 
+	private Logger logger = Logger.getLogger(IndexController.class.getName());
+	
 	/**
 	 * リクエストパラメータで指定された画像データを読み込み、 DATA URL 形式の文字列に変換して返します。
 	 */
@@ -26,26 +32,45 @@ public class IndexController extends Controller {
 			response.setStatus(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
 			return null;
 		}
-		
+
 		String url = request.getParameter("url");
 		if (StringUtil.isEmpty(url)) {
 			response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
 			return null;
 		}
-
-		response.setContentType("text/plain");
-		String result = downloadImage(url);
-		if (StringUtil.isEmpty(result)) {
-			response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-		} else {
-	        response.setHeader("Access-Control-Allow-Origin", "*");
-	        response.setHeader("Access-Control-Allow-Headers", "X-Requested-With");
-	        response.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-		}
 		
+		logger.info(String.format("Proxy request for %s", url));
+		
+		response.setContentType("text/plain");
+		response.setHeader("Access-Control-Allow-Origin", "*");
+		response.setHeader("Access-Control-Allow-Headers", "X-Requested-With");
+		response.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+
+		MemcacheService memcache = MemcacheServiceFactory.getMemcacheService();
+		String dataUrl = (String) memcache.get(url);
+		if (dataUrl == null) {
+			if (memcache.contains(url)) {
+				dataUrl = (String) memcache.get(url);
+				logger.info(String.format("Load from cache %s", url));
+			} else {
+				dataUrl = downloadImage(url);
+				logger.info(String.format("Download %s", url));
+				if (StringUtil.isEmpty(dataUrl)) {
+					logger.info(String.format("Download Failed %s", url));
+					response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+				} else {
+					logger.info(String.format("Download Successed %s", url));
+					memcache.put(url, dataUrl,
+							Expiration.byDeltaSeconds(60 * 60 * 24));
+				}
+			}
+		} else {
+			logger.info(String.format("Load from cache %s", url));
+		}
+
 		PrintWriter writer = response.getWriter();
-		response.setContentLength(result.length());
-		writer.write(result);
+		response.setContentLength(dataUrl.length());
+		writer.write(dataUrl);
 		writer.flush();
 		return null;
 	}
@@ -61,12 +86,12 @@ public class IndexController extends Controller {
 			if (con.getResponseCode() != 200) {
 				return "";
 			}
-			
+
 			StringBuilder encodedString = new StringBuilder();
 
 			String contentType = con.getContentType();
 			encodedString.append(ImageDataUrl.prefix(contentType));
-			
+
 			is = con.getInputStream();
 			byte[] buffer = new byte[3 * 2000];
 			while (true) {
