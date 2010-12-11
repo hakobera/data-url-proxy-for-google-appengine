@@ -56,12 +56,18 @@ public class IndexController extends Controller {
 				dataUrl = downloadImage(url);
 				logger.info(String.format("Download %s", url));
 				if (StringUtil.isEmpty(dataUrl)) {
-					logger.info(String.format("Download Failed %s", url));
+					logger.fine(String.format("Download Failed %s", url));
 					response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
 				} else {
-					logger.info(String.format("Download Successed %s", url));
-					memcache.put(url, dataUrl,
-							Expiration.byDeltaSeconds(60 * 60 * 24));
+					// Memcache の最大サイズ 1MB を超えるものは許可しない
+					int contentLength = dataUrl.length();
+					if (contentLength > 1024 * 1024) {
+						logger.fine(String.format("File size overquota %d %s", contentLength, url));
+						response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+					} else {
+						logger.info(String.format("Download Successed %s", url));
+						memcache.put(url, dataUrl);
+					}
 				}
 			}
 		} else {
@@ -92,6 +98,12 @@ public class IndexController extends Controller {
 			String contentType = con.getContentType();
 			encodedString.append(ImageDataUrl.prefix(contentType));
 
+			int contentLength = con.getContentLength();
+			if (contentLength > 1024 * 1024) {
+				logger.fine(String.format("File size overquota %d %s", contentLength, url));
+				return "";
+			}
+			
 			is = con.getInputStream();
 			byte[] buffer = new byte[3 * 2000];
 			while (true) {
