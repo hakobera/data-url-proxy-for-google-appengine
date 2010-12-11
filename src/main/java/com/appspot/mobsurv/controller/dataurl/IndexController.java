@@ -15,16 +15,21 @@ import org.slim3.controller.Navigation;
 import org.slim3.util.StringUtil;
 
 import com.appspot.mobsurv.util.ImageDataUrl;
-import com.google.appengine.api.memcache.Expiration;
 import com.google.appengine.api.memcache.MemcacheService;
 import com.google.appengine.api.memcache.MemcacheServiceFactory;
+
+/**
+ * リクエストパラメータで指定された画像データを読み込み、 
+ * DATA URL 形式の文字列に変換して返すコントローラクラスです。
+ */
 
 public class IndexController extends Controller {
 
 	private Logger logger = Logger.getLogger(IndexController.class.getName());
 	
 	/**
-	 * リクエストパラメータで指定された画像データを読み込み、 DATA URL 形式の文字列に変換して返します。
+	 * リクエストパラメータで指定された画像データを読み込み、 
+	 * DATA URL 形式の文字列に変換して返します。
 	 */
 	@Override
 	public Navigation run() throws Exception {
